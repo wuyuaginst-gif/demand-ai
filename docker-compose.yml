@@ -23,6 +23,17 @@ services:
       retries: 3
       start_period: 60s
 
+  frontend:
+    image: nginx:alpine
+    container_name: demand-ai-frontend
+    ports:
+      - "3000:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+    depends_on:
+      - demand-ai
+    restart: unless-stopped
+
 volumes:
   chroma_data:
     driver: local
