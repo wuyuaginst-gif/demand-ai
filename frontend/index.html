@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>需求管理 AI 助手</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    [v-cloak] { display: none; }
+    .fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
+    .fade-enter-from, .fade-leave-to { opacity: 0; }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <div id="app" v-cloak>
+    <!-- 顶部导航 -->
+    <nav class="bg-white shadow-sm border-b">
+      <div class="max-w-6xl mx-auto px-4 py-4">
+        <div class="flex items-center justify-between">
+          <h1 class="text-xl font-bold text-gray-800">🤖 需求管理 AI 助手</h1>
+          <div class="flex items-center space-x-2">
+            <span class="w-2 h-2 rounded-full" :class="serverStatus === 'online' ? 'bg-green-500' : 'bg-red-500'"></span>
+            <span class="text-sm text-gray-600">{{ serverStatus === 'online' ? '服务正常' : '服务离线' }}</span>
+          </div>
+        </div>
+      </div>
+    </nav>
+
+    <div class="max-w-6xl mx-auto px-4 py-6">
+      <!-- Tab 切换 -->
+      <div class="flex space-x-1 bg-white rounded-lg p-1 shadow-sm mb-6">
+        <button 
+          v-for="tab in tabs" 
+          :key="tab.id"
+          @click="activeTab = tab.id"
+          class="flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors"
+          :class="activeTab === tab.id ? 'bg-blue-500 text-white' : 'text-gray-600 hover:bg-gray-100'"
+        >
+          {{ tab.icon }} {{ tab.name }}
+        </button>
+      </div>
+
+      <!-- 需求分类 -->
+      <div v-show="activeTab === 'classify'" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="bg-white rounded-lg shadow-sm p-6">
+          <h2 class="text-lg font-semibold mb-4">📝 输入需求内容</h2>
+          <textarea 
+            v-model="classifyInput"
+            class="w-full h-40 p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+            placeholder="请输入需求描述，例如：&#10;信贷系统登录页面点击按钮无反应，影响业务办理..."
+          ></textarea>
+          <button 
+            @click="classify"
+            :disabled="loading.classify || !classifyInput.trim()"
+            class="mt-4 w-full bg-blue-500 text-white py-2 px-4 rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+          >
+            {{ loading.classify ? '分析中...' : '🔍 智能分类' }}
+          </button>
+        </div>
+        
+        <div class="bg-white rounded-lg shadow-sm p-6">
+          <h2 class="text-lg font-semibold mb-4">📊 分类结果</h2>
+          <div v-if="classifyResult" class="space-y-3">
+            <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <span class="text-gray-600">需求类型</span>
+              <span class="px-3 py-1 rounded-full text-sm font-medium"
+                :class="{
+                  'bg-red-100 text-red-700': classifyResult.type === 'Bug修复',
+                  'bg-blue-100 text-blue-700': classifyResult.type === '新功能开发',
+                  'bg-yellow-100 text-yellow-700': classifyResult.type === '运维支持',
+                  'bg-green-100 text-green-700': classifyResult.type === '咨询',
+                  'bg-purple-100 text-purple-700': classifyResult.type === '数据需求'
+                }"
+              >{{ classifyResult.type }}</span>
+            </div>
+            <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <span class="text-gray-600">紧急程度</span>
+              <span class="px-3 py-1 rounded-full text-sm font-medium"
+                :class="{
+                  'bg-red-100 text-red-700': classifyResult.urgency === '紧急',
+                  'bg-yellow-100 text-yellow-700': classifyResult.urgency === '一般',
+                  'bg-green-100 text-green-700': classifyResult.urgency === '低'
+                }"
+              >{{ classifyResult.urgency }}</span>
+            </div>
+            <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <span class="text-gray-600">建议部门</span>
+              <span class="font-medium text-gray-800">{{ classifyResult.department }}</span>
+            </div>
+            <div class="p-3 bg-blue-50 rounded-lg">
+              <span class="text-gray-600 text-sm">分类理由：</span>
+              <p class="text-gray-800 mt-1">{{ classifyResult.reason }}</p>
+            </div>
+          </div>
+          <div v-else class="text-gray-400 text-center py-12">
+            等待分析结果...
+          </div>
+        </div>
+      </div>
+
+      <!-- 摘要生成 -->
+      <div v-show="activeTab === 'summarize'" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="bg-white rounded-lg shadow-sm p-6">
+          <h2 class="text-lg font-semibold mb-4">📝 输入需求内容</h2>
+          <textarea 
+            v-model="summarizeInput"
+            class="w-full h-40 p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+            placeholder="请输入较长的需求描述，AI将自动提炼要点..."
+          ></textarea>
+          <button 
+            @click="summarize"
+            :disabled="loading.summarize || !summarizeInput.trim()"
+            class="mt-4 w-full bg-green-500 text-white py-2 px-4 rounded-lg hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+          >
+            {{ loading.summarize ? '生成中...' : '✨ 生成摘要' }}
+          </button>
+        </div>
+        
+        <div class="bg-white rounded-lg shadow-sm p-6">
+          <h2 class="text-lg font-semibold mb-4">📋 摘要结果</h2>
+          <div v-if="summarizeResult" class="p-4 bg-green-50 rounded-lg">
+            <pre class="whitespace-pre-wrap text-gray-800 font-sans">{{ summarizeResult }}</pre>
+          </div>
+          <div v-else class="text-gray-400 text-center py-12">
+            等待生成结果...
+          </div>
+        </div>
+      </div>
+
+      <!-- 相似检索 -->
+      <div v-show="activeTab === 'similar'" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="bg-white rounded-lg shadow-sm p-6">
+          <h2 class="text-lg font-semibold mb-4">📝 输入需求内容</h2>
+          <textarea 
+            v-model="similarInput"
+            class="w-full h-40 p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+            placeholder="输入新需求，查找历史上类似的需求..."
+          ></textarea>
+          <button 
+            @click="findSimilar"
+            :disabled="loading.similar || !similarInput.trim()"
+            class="mt-4 w-full bg-purple-500 text-white py-2 px-4 rounded-lg hover:bg-purple-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+          >
+            {{ loading.similar ? '检索中...' : '🔎 查找相似' }}
+          </button>
+        </div>
+        
+        <div class="bg-white rounded-lg shadow-sm p-6">
+          <h2 class="text-lg font-semibold mb-4">📚 相似需求</h2>
+          <div v-if="similarResult && similarResult.length > 0" class="space-y-3">
+            <div v-for="(item, index) in similarResult" :key="index" 
+              class="p-4 border rounded-lg hover:shadow-md transition-shadow">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-medium text-blue-600">{{ item.demand_id || '未知ID' }}</span>
+                <span class="text-xs px-2 py-1 bg-gray-100 rounded-full">
+                  相似度: {{ ((1 - item.score) * 100).toFixed(1) }}%
+                </span>
+              </div>
+              <p class="text-gray-700 text-sm">{{ item.content }}</p>
+            </div>
+          </div>
+          <div v-else-if="similarResult && similarResult.length === 0" class="text-gray-400 text-center py-12">
+            暂无相似需求，请先存储一些历史数据
+          </div>
+          <div v-else class="text-gray-400 text-center py-12">
+            等待检索结果...
+          </div>
+        </div>
+      </div>
+
+      <!-- 知识库管理 -->
+      <div v-show="activeTab === 'store'" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="bg-white rounded-lg shadow-sm p-6">
+          <h2 class="text-lg font-semibold mb-4">📥 存储需求</h2>
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">需求编号</label>
+              <input 
+                v-model="storeId"
+                type="text"
+                class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="例如：REQ-2024-001"
+              >
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">需求内容</label>
+              <textarea 
+                v-model="storeContent"
+                class="w-full h-32 p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                placeholder="输入需求详细内容..."
+              ></textarea>
+            </div>
+          </div>
+          <button 
+            @click="store"
+            :disabled="loading.store || !storeId.trim() || !storeContent.trim()"
+            class="mt-4 w-full bg-orange-500 text-white py-2 px-4 rounded-lg hover:bg-orange-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+          >
+            {{ loading.store ? '存储中...' : '💾 存入知识库' }}
+          </button>
+        </div>
+        
+        <div class="bg-white rounded-lg shadow-sm p-6">
+          <h2 class="text-lg font-semibold mb-4">📊 知识库状态</h2>
+          <div class="space-y-4">
+            <div class="p-4 bg-gray-50 rounded-lg">
+              <div class="text-3xl font-bold text-blue-600">{{ stats.total_documents || 0 }}</div>
+              <div class="text-sm text-gray-600">已存储需求数</div>
+            </div>
+            <button 
+              @click="refreshStats"
+              class="w-full py-2 px-4 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              🔄 刷新统计
+            </button>
+            
+            <!-- 快速导入示例数据 -->
+            <div class="border-t pt-4">
+              <p class="text-sm text-gray-600 mb-2">快速导入示例数据：</p>
+              <button 
+                @click="importSampleData"
+                :disabled="loading.import"
+                class="w-full py-2 px-4 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                {{ loading.import ? '导入中...' : '📦 导入演示数据' }}
+              </button>
+            </div>
+          </div>
+          
+          <!-- 操作消息 -->
+          <div v-if="storeMessage" class="mt-4 p-3 rounded-lg text-sm"
+            :class="storeMessage.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'">
+            {{ storeMessage.text }}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 底部 -->
+    <footer class="text-center py-4 text-gray-500 text-sm">
+      基于 LangChain + Ollama + ChromaDB 构建 | MVP Demo
+    </footer>
+  </div>
+
+  <script>
+    const { createApp, ref, reactive, onMounted } = Vue
+
+    const API_BASE = 'http://localhost:8000'
+
+    createApp({
+      setup() {
+        const activeTab = ref('classify')
+        const serverStatus = ref('offline')
+        
+        const tabs = [
+          { id: 'classify', name: '需求分类', icon: '🏷️' },
+          { id: 'summarize', name: '摘要生成', icon: '✨' },
+          { id: 'similar', name: '相似检索', icon: '🔎' },
+          { id: 'store', name: '知识库', icon: '📚' }
+        ]
+
+        const loading = reactive({
+          classify: false,
+          summarize: false,
+          similar: false,
+          store: false,
+          import: false
+        })
+
+        // 分类
+        const classifyInput = ref('')
+        const classifyResult = ref(null)
+
+        // 摘要
+        const summarizeInput = ref('')
+        const summarizeResult = ref(null)
+
+        // 相似
+        const similarInput = ref('')
+        const similarResult = ref(null)
+
+        // 存储
+        const storeId = ref('')
+        const storeContent = ref('')
+        const storeMessage = ref(null)
+        const stats = reactive({ total_documents: 0 })
+
+        // API 调用
+        async function fetchAPI(endpoint, data) {
+          const response = await fetch(`${API_BASE}${endpoint}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+          })
+          return response.json()
+        }
+
+        async function classify() {
+          loading.classify = true
+          classifyResult.value = null
+          try {
+            const res = await fetchAPI('/classify', { content: classifyInput.value })
+            if (res.success) {
+              classifyResult.value = res.data
+            } else {
+              alert('分类失败：' + (res.error || '未知错误'))
+            }
+          } catch (e) {
+            alert('请求失败：' + e.message)
+          } finally {
+            loading.classify = false
+          }
+        }
+
+        async function summarize() {
+          loading.summarize = true
+          summarizeResult.value = null
+          try {
+            const res = await fetchAPI('/summarize', { content: summarizeInput.value })
+            if (res.success) {
+              summarizeResult.value = res.summary
+            } else {
+              alert('生成失败：' + (res.error || '未知错误'))
+            }
+          } catch (e) {
+            alert('请求失败：' + e.message)
+          } finally {
+            loading.summarize = false
+          }
+        }
+
+        async function findSimilar() {
+          loading.similar = true
+          similarResult.value = null
+          try {
+            const res = await fetchAPI('/similar', { content: similarInput.value })
+            if (res.success) {
+              similarResult.value = res.similar_demands
+            } else {
+              alert('检索失败：' + (res.error || '未知错误'))
+            }
+          } catch (e) {
+            alert('请求失败：' + e.message)
+          } finally {
+            loading.similar = false
+          }
+        }
+
+        async function store() {
+          loading.store = true
+          storeMessage.value = null
+          try {
+            const res = await fetchAPI('/store', { 
+              demand_id: storeId.value, 
+              content: storeContent.value 
+            })
+            if (res.success) {
+              storeMessage.value = { type: 'success', text: '存储成功！' }
+              storeId.value = ''
+              storeContent.value = ''
+              refreshStats()
+            } else {
+              storeMessage.value = { type: 'error', text: '存储失败：' + (res.message || '未知错误') }
+            }
+          } catch (e) {
+            storeMessage.value = { type: 'error', text: '请求失败：' + e.message }
+          } finally {
+            loading.store = false
+          }
+        }
+
+        async function refreshStats() {
+          try {
+            const response = await fetch(`${API_BASE}/stats`)
+            const data = await response.json()
+            if (data.vector_db) {
+              stats.total_documents = data.vector_db.total_documents || 0
+            }
+          } catch (e) {
+            console.error('获取统计失败', e)
+          }
+        }
+
+        async function checkHealth() {
+          try {
+            const response = await fetch(`${API_BASE}/health`)
+            const data = await response.json()
+            serverStatus.value = data.status === 'healthy' ? 'online' : 'offline'
+          } catch (e) {
+            serverStatus.value = 'offline'
+          }
+        }
+
+        async function importSampleData() {
+          loading.import = true
+          const sampleData = [
+            { demand_id: 'REQ-2024-001', content: '客户信息批量导入功能开发，支持Excel格式上传，单次最多1000条记录，需要做数据校验和去重处理' },
+            { demand_id: 'REQ-2024-002', content: '信贷审批流程优化，针对小额贷款（5万以下）增加自动审批规则，减少人工审核环节' },
+            { demand_id: 'REQ-2024-003', content: '开发客户交易明细数据导出功能，支持按时间范围筛选，导出为Excel格式' },
+            { demand_id: 'REQ-2024-004', content: '移动端APP增加人脸识别登录功能，接入公安部身份核验接口，提升账户安全性' },
+            { demand_id: 'REQ-2024-005', content: '报表系统性能优化，月末跑批报表生成时间从2小时缩短到30分钟以内' },
+            { demand_id: 'REQ-2024-006', content: '反洗钱系统大额交易预警功能，单笔超5万或当日累计超20万自动触发预警' }
+          ]
+
+          try {
+            for (const item of sampleData) {
+              await fetchAPI('/store', item)
+            }
+            storeMessage.value = { type: 'success', text: `成功导入 ${sampleData.length} 条示例数据！` }
+            refreshStats()
+          } catch (e) {
+            storeMessage.value = { type: 'error', text: '导入失败：' + e.message }
+          } finally {
+            loading.import = false
+          }
+        }
+
+        onMounted(() => {
+          checkHealth()
+          refreshStats()
+          // 定时检查服务状态
+          setInterval(checkHealth, 30000)
+        })
+
+        return {
+          activeTab,
+          serverStatus,
+          tabs,
+          loading,
+          classifyInput,
+          classifyResult,
+          summarizeInput,
+          summarizeResult,
+          similarInput,
+          similarResult,
+          storeId,
+          storeContent,
+          storeMessage,
+          stats,
+          classify,
+          summarize,
+          findSimilar,
+          store,
+          refreshStats,
+          importSampleData
+        }
+      }
+    }).mount('#app')
+  </script>
+</body>
+</html>
