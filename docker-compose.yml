@@ -1,0 +1,28 @@
+services:
+  demand-ai:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: demand-ai-service
+    ports:
+      - "9000:9000"
+    environment:
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - MODEL_NAME=${MODEL_NAME:-qwen2.5:7b}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-qwen2.5:7b}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - chroma_data:/app/data/chroma_db
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  chroma_data:
+    driver: local
